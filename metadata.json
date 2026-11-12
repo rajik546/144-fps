@@ -1,0 +1,6 @@
+{
+  "name": "V-Phone 144",
+  "description": "Virtual Android phone and 144 FPS gaming profile system with custom device profiles, refresh rate manager, GPU diagnostics, and gaming monitor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
