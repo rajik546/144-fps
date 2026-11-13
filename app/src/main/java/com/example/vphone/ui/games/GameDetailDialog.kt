@@ -19,9 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Shop
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
@@ -76,10 +78,12 @@ import com.example.vphone.ui.components.GamingBadge
 fun GameDetailDialog(
     game: VirtualGame,
     report: GameCompatibilityReport,
+    isInstalled: Boolean,
     availableProfiles: List<DeviceProfile>,
     onDismiss: () -> Unit,
     onSaveConfig: (preferredFps: Int, assignedProfileId: Long) -> Unit,
-    onLaunchGame: () -> Unit
+    onLaunchRealGame: () -> Unit,
+    onOpenPlayStore: () -> Unit
 ) {
     var preferredFps by remember { mutableIntStateOf(game.preferredFps) }
     var selectedProfileId by remember { mutableLongStateOf(game.assignedProfileId) }
@@ -109,7 +113,7 @@ fun GameDetailDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = game.appName,
                             color = TextWhite,
@@ -125,6 +129,59 @@ fun GameDetailDialog(
 
                     IconButton(onClick = onDismiss, modifier = Modifier.testTag("game_dialog_close_button")) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Real Device Installation Status Banner
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isInstalled) DarkCharcoal else DarkCharcoal.copy(alpha = 0.9f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isInstalled) NeonGreen.copy(alpha = 0.6f) else WarningAmber.copy(alpha = 0.6f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = if (isInstalled) Icons.Default.CheckCircle else Icons.Default.Download,
+                                contentDescription = null,
+                                tint = if (isInstalled) NeonGreen else WarningAmber,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = if (isInstalled) "INSTALLED ON PHYSICAL PHONE" else "NOT INSTALLED ON PHONE",
+                                    color = if (isInstalled) NeonGreen else WarningAmber,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (isInstalled) "Ready to launch with high-FPS profile & HUD" else "Install from Google Play Store or APK",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+
+                        if (!isInstalled) {
+                            Button(
+                                onClick = onOpenPlayStore,
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("dialog_playstore_button")
+                            ) {
+                                Text(text = "GET", color = VoidBlack, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
 
@@ -274,18 +331,34 @@ fun GameDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(
-                        onClick = {
-                            onSaveConfig(preferredFps, selectedProfileId)
-                            onLaunchGame()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.weight(1f).testTag("launch_game_button")
-                    ) {
-                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "LAUNCH IN V-PHONE", color = VoidBlack, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                    if (isInstalled) {
+                        Button(
+                            onClick = {
+                                onSaveConfig(preferredFps, selectedProfileId)
+                                onLaunchRealGame()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).testTag("launch_game_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "LAUNCH REAL GAME (144 FPS)", color = VoidBlack, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                onSaveConfig(preferredFps, selectedProfileId)
+                                onOpenPlayStore()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = NeonGreen),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).testTag("install_game_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "INSTALL FROM PLAY STORE", color = VoidBlack, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        }
                     }
 
                     Button(

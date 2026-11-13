@@ -97,8 +97,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationMessage = MutableStateFlow<String?>(null)
     val notificationMessage: StateFlow<String?> = _notificationMessage.asStateFlow()
 
+    private val _installedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val installedPackages: StateFlow<Set<String>> = _installedPackages.asStateFlow()
+
     init {
         FpsMeter.start()
+        refreshInstalledPackages(application)
 
         // Background resource ticker
         viewModelScope.launch(Dispatchers.IO) {
@@ -326,6 +330,86 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 showToast("Scan complete: No additional games detected on device.")
             }
+            refreshInstalledPackages(context)
+        }
+    }
+
+    fun isGameInstalled(packageName: String): Boolean {
+        return _installedPackages.value.contains(packageName)
+    }
+
+    fun refreshInstalledPackages(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pm = context.packageManager
+            val pkgs = try {
+                pm.getInstalledApplications(0).map { it.packageName }.toSet()
+            } catch (_: Throwable) {
+                emptySet()
+            }
+            _installedPackages.value = pkgs
+        }
+    }
+
+    fun launchRealGame(context: Context, game: VirtualGame, targetHz: Int? = null) {
+        val pm = context.packageManager
+        val launchIntent = pm.getLaunchIntentForPackage(game.packageName)
+
+        if (launchIntent != null) {
+            val assignedProfile = allProfiles.value.firstOrNull { it.id == game.assignedProfileId }
+            val profileModel = assignedProfile?.model ?: "ASUS ROG Phone 8"
+            val hz = targetHz ?: game.preferredFps
+
+            if (context is Activity) {
+                displayManager.applyTargetRefreshRate(context.window, hz)
+            }
+
+            if (Settings.canDrawOverlays(context)) {
+                FloatingGamingOverlayService.startService(context, profileModel)
+            } else {
+                _showFloatingHud.value = true
+            }
+
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            try {
+                context.startActivity(launchIntent)
+                showToast("Launching real ${game.appName} with $profileModel 144Hz Gaming Profile & HUD...")
+            } catch (e: Exception) {
+                showToast("Failed to launch ${game.appName}: ${e.message}")
+            }
+        } else {
+            showToast("${game.appName} is not installed on this device. Opening Google Play Store to install...")
+            openPlayStore(context, game.packageName)
+        }
+    }
+
+    fun openPlayStore(context: Context, packageName: String) {
+        try {
+            val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(marketIntent)
+        } catch (_: Throwable) {
+            try {
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(webIntent)
+            } catch (e: Throwable) {
+                showToast("Could not open Play Store: ${e.message}")
+            }
+        }
+    }
+
+    fun installApk(context: Context, apkUri: Uri) {
+        try {
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(installIntent)
+            showToast("Opening package installer for selected APK...")
+        } catch (e: Exception) {
+            showToast("Failed to launch package installer: ${e.message}")
         }
     }
 

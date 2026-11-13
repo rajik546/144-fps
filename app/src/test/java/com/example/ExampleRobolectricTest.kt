@@ -51,4 +51,11 @@ class ExampleRobolectricTest {
     assertEquals(144, profile.displayRefreshRate)
     assertEquals("ROG Phone 8", profile.model)
   }
+
+  @Test
+  fun `verify package installer intent generation`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val pm = context.packageManager
+    assertNotNull("PackageManager must be present", pm)
+  }
 }

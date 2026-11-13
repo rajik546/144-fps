@@ -101,6 +101,7 @@ fun DashboardScreen(
     val allPhones by viewModel.allPhones.collectAsStateWithLifecycle()
     val allProfiles by viewModel.allProfiles.collectAsStateWithLifecycle()
     val allGames by viewModel.allGames.collectAsStateWithLifecycle()
+    val installedPackages by viewModel.installedPackages.collectAsStateWithLifecycle()
     val systemStats by viewModel.systemStats.collectAsStateWithLifecycle()
     val feasibility by viewModel.feasibility.collectAsStateWithLifecycle()
 
@@ -518,11 +519,17 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(allGames) { game ->
+                        val isInstalled = installedPackages.contains(game.packageName)
                         GameQuickCard(
                             game = game,
+                            isInstalled = isInstalled,
                             onClick = {
-                                viewModel.selectGameForDetail(game)
-                                onNavigateToGames()
+                                if (isInstalled) {
+                                    viewModel.launchRealGame(context, game)
+                                } else {
+                                    viewModel.selectGameForDetail(game)
+                                    onNavigateToGames()
+                                }
                             }
                         )
                     }
@@ -603,15 +610,19 @@ fun DashboardScreen(
 @Composable
 fun GameQuickCard(
     game: VirtualGame,
+    isInstalled: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
-            .width(170.dp)
+            .width(175.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() },
         color = CardSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isInstalled) NeonGreen.copy(alpha = 0.5f) else CardBorder
+        )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -625,7 +636,8 @@ fun GameQuickCard(
                         .clip(RoundedCornerShape(8.dp))
                         .background(
                             Brush.linearGradient(
-                                listOf(ElectricBlue, NeonCyan)
+                                if (isInstalled) listOf(NeonGreen, ElectricBlue)
+                                else listOf(ElectricBlue, NeonCyan)
                             )
                         ),
                     contentAlignment = Alignment.Center
@@ -639,8 +651,8 @@ fun GameQuickCard(
                 }
 
                 GamingBadge(
-                    text = "${game.preferredFps} FPS",
-                    color = NeonGreen
+                    text = if (isInstalled) "INSTALLED" else "${game.preferredFps} FPS",
+                    color = if (isInstalled) NeonGreen else NeonCyan
                 )
             }
 
@@ -654,10 +666,11 @@ fun GameQuickCard(
                 maxLines = 1
             )
             Text(
-                text = game.antiCheatEngine,
-                color = TextMuted,
+                text = if (isInstalled) "Tap to Launch Real Game" else "Tap to Install / Config",
+                color = if (isInstalled) NeonGreen else TextMuted,
                 fontSize = 10.sp,
-                maxLines = 1
+                maxLines = 1,
+                fontWeight = if (isInstalled) FontWeight.SemiBold else FontWeight.Normal
             )
         }
     }

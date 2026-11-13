@@ -180,10 +180,18 @@ class FloatingGamingOverlayService : Service() {
                 val fps = FpsMeter.fpsState.value.currentFps
                 val stats = resourceMgr.getStats()
                 fpsText.text = "${fps.roundToInt()} FPS"
-                telemetryText.text = "HZ: 144Hz | RAM: ${stats.ramUsagePercent}% | ${stats.batteryTemperatureC}°C"
+                val profileTag = currentProfileModel.take(14)
+                telemetryText.text = "[$profileTag] • 144Hz • RAM: ${stats.ramUsagePercent}%"
                 delay(500)
             }
         }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        intent?.getStringExtra(EXTRA_PROFILE_MODEL)?.let {
+            currentProfileModel = it
+        }
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -198,9 +206,14 @@ class FloatingGamingOverlayService : Service() {
 
     companion object {
         const val CHANNEL_ID = "vphone_gaming_overlay_channel"
+        const val EXTRA_PROFILE_MODEL = "extra_profile_model"
+        var currentProfileModel: String = "ASUS ROG Phone 8"
 
-        fun startService(context: Context) {
-            val intent = Intent(context, FloatingGamingOverlayService::class.java)
+        fun startService(context: Context, profileModel: String = "ASUS ROG Phone 8") {
+            currentProfileModel = profileModel
+            val intent = Intent(context, FloatingGamingOverlayService::class.java).apply {
+                putExtra(EXTRA_PROFILE_MODEL, profileModel)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

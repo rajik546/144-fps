@@ -1,6 +1,9 @@
 package com.example.vphone.ui.virtualos
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Games
 import androidx.compose.material.icons.filled.Info
@@ -46,9 +50,11 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -104,16 +111,31 @@ fun VirtualPhoneDesktopScreen(
     onExitDesktop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+
     BackHandler {
         onExitDesktop()
     }
 
     val fpsReading by viewModel.fpsReading.collectAsStateWithLifecycle()
     val allGames by viewModel.allGames.collectAsStateWithLifecycle()
+    val installedPackages by viewModel.installedPackages.collectAsStateWithLifecycle()
     val engineLogs by viewModel.virtualEngine.logs.collectAsStateWithLifecycle()
 
     var activeDialogType by remember { mutableStateOf<String?>(null) }
-    var selectedGameToLaunch by remember { mutableStateOf<VirtualGame?>(null) }
+    var selectedUninstalledGame by remember { mutableStateOf<VirtualGame?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshInstalledPackages(context)
+    }
+
+    val apkPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.installApk(context, uri)
+        }
+    }
 
     // Dialogs
     if (activeDialogType == "SETTINGS") {
@@ -131,15 +153,19 @@ fun VirtualPhoneDesktopScreen(
         )
     }
 
-    if (activeDialogType == "GAME_LAUNCH" && selectedGameToLaunch != null) {
-        VirtualGameSessionModal(
-            game = selectedGameToLaunch!!,
+    if (activeDialogType == "GAME_NOT_INSTALLED" && selectedUninstalledGame != null) {
+        GameNotInstalledDialog(
+            game = selectedUninstalledGame!!,
             profile = profile,
-            phone = phone,
-            fps = fpsReading.currentFps,
             onDismiss = {
                 activeDialogType = null
-                selectedGameToLaunch = null
+                selectedUninstalledGame = null
+            },
+            onInstallFromPlayStore = {
+                viewModel.openPlayStore(context, selectedUninstalledGame!!.packageName)
+            },
+            onPickApk = {
+                apkPickerLauncher.launch("application/vnd.android.package-archive")
             }
         )
     }
@@ -187,7 +213,7 @@ fun VirtualPhoneDesktopScreen(
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "VIRTUAL SANDBOX ACTIVE",
+                            text = "144 FPS V-RIG RUNNING",
                             color = NeonCyan,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -202,7 +228,7 @@ fun VirtualPhoneDesktopScreen(
                         )
                     }
                     Text(
-                        text = "${profile?.manufacturer} ${profile?.model} • ${phone.targetRefreshRate}Hz Gaming Engine",
+                        text = "${profile?.manufacturer} ${profile?.model} • ${phone.targetRefreshRate}Hz Active Identity",
                         color = TextMuted,
                         fontSize = 12.sp
                     )
@@ -240,15 +266,15 @@ fun VirtualPhoneDesktopScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = "144 FPS BOOST MODE",
+                                    text = "144 FPS REAL GAME LAUNCHER",
                                     color = TextWhite,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Live Render: ${fpsReading.currentFps.roundToInt()} FPS",
+                                    text = "Tap any installed game to launch directly with HUD",
                                     color = NeonGreen,
-                                    fontSize = 11.sp
+                                    fontSize = 10.sp
                                 )
                             }
                         }
@@ -266,14 +292,14 @@ fun VirtualPhoneDesktopScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "VIRTUAL APPLICATIONS & GAMES",
+                        text = "VIRTUAL APPLICATIONS & REAL GAMES",
                         color = TextSubtle,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "GUEST SANDBOX",
+                        text = "TAP TO LAUNCH",
                         color = NeonCyan,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -305,11 +331,13 @@ fun VirtualPhoneDesktopScreen(
 
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(4),
-                    modifier = Modifier.fillMaxWidth().height(320.dp),
+                    modifier = Modifier.fillMaxWidth().height(330.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(allDesktopApps) { app ->
+                        val isInstalled = app.isGame && installedPackages.contains(app.id)
+
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
@@ -318,11 +346,19 @@ fun VirtualPhoneDesktopScreen(
                                     when (app.id) {
                                         "settings" -> activeDialogType = "SETTINGS"
                                         "terminal" -> activeDialogType = "TERMINAL"
-                                        "files" -> viewModel.showToast("Isolated Virtual Storage: /data/vphone_${phone.id}/ (Safe)")
-                                        "turbo" -> viewModel.showToast("Game Turbo 144Hz Active")
+                                        "files" -> viewModel.showToast("Isolated Virtual Storage: /data/vphone_${phone.id}/ (Active)")
+                                        "turbo" -> viewModel.showToast("Game Turbo 144Hz Active with ${profile?.model ?: "ROG Phone 8"}")
                                         else -> {
-                                            selectedGameToLaunch = allGames.firstOrNull { it.packageName == app.id }
-                                            activeDialogType = "GAME_LAUNCH"
+                                            val targetGame = allGames.firstOrNull { it.packageName == app.id }
+                                            if (targetGame != null) {
+                                                if (installedPackages.contains(targetGame.packageName)) {
+                                                    // Launch real installed game immediately!
+                                                    viewModel.launchRealGame(context, targetGame, phone.targetRefreshRate)
+                                                } else {
+                                                    selectedUninstalledGame = targetGame
+                                                    activeDialogType = "GAME_NOT_INSTALLED"
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -334,10 +370,18 @@ fun VirtualPhoneDesktopScreen(
                                     .size(54.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
-                                        if (app.isGame) Brush.linearGradient(listOf(ElectricBlue, NeonCyan))
-                                        else Brush.linearGradient(listOf(app.iconBgColor, CardSurfaceVariant))
+                                        if (app.isGame) {
+                                            if (isInstalled) Brush.linearGradient(listOf(NeonGreen, ElectricBlue))
+                                            else Brush.linearGradient(listOf(ElectricBlue, NeonCyan))
+                                        } else {
+                                            Brush.linearGradient(listOf(app.iconBgColor, CardSurfaceVariant))
+                                        }
                                     )
-                                    .border(1.dp, CardBorder, RoundedCornerShape(14.dp)),
+                                    .border(
+                                        1.dp,
+                                        if (isInstalled) NeonGreen else CardBorder,
+                                        RoundedCornerShape(14.dp)
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (app.isGame) {
@@ -361,9 +405,9 @@ fun VirtualPhoneDesktopScreen(
 
                             Text(
                                 text = app.name,
-                                color = TextWhite,
+                                color = if (isInstalled) NeonGreen else TextWhite,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = if (isInstalled) FontWeight.Bold else FontWeight.Medium,
                                 textAlign = TextAlign.Center,
                                 maxLines = 1
                             )
@@ -480,7 +524,7 @@ fun VirtualSettingsModal(
                     color = DarkCharcoal
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(text = "SPOOFED BUILD PROPERTIES", color = TextSubtle, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "ACTIVE BUILD PROPERTIES", color = TextSubtle, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         Text(text = "Build.MANUFACTURER: ${profile?.manufacturer ?: "INFINIX"}", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(text = "Build.BRAND: ${profile?.brand ?: "INFINIX"}", color = TextWhite, fontSize = 12.sp)
                         Text(text = "Build.MODEL: ${profile?.model ?: "Infinix X6891"}", color = NeonGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -581,19 +625,19 @@ fun VirtualTerminalModal(
 }
 
 @Composable
-fun VirtualGameSessionModal(
+fun GameNotInstalledDialog(
     game: VirtualGame,
     profile: DeviceProfile?,
-    phone: VirtualPhone,
-    fps: Double,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onInstallFromPlayStore: () -> Unit,
+    onPickApk: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .clip(RoundedCornerShape(20.dp))
-                .border(1.5.dp, NeonCyan, RoundedCornerShape(20.dp)),
+                .border(1.5.dp, WarningAmber, RoundedCornerShape(20.dp)),
             color = VoidBlack
         ) {
             Column(
@@ -605,13 +649,13 @@ fun VirtualGameSessionModal(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GamingBadge(text = "144 FPS V-PHONE ENGINE ACTIVE", color = NeonCyan)
+                    GamingBadge(text = "GAME NOT INSTALLED", color = WarningAmber)
                     IconButton(onClick = onDismiss) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = TextMuted)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
                     text = game.appName,
@@ -621,59 +665,57 @@ fun VirtualGameSessionModal(
                 )
 
                 Text(
-                    text = "Running inside ${profile?.manufacturer} ${profile?.model} Sandbox",
-                    color = NeonGreen,
+                    text = "${game.appName} is not installed on this physical device yet.",
+                    color = TextMuted,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    textAlign = TextAlign.Center
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Real-time In-Game HUD Simulator
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = DarkCharcoal,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                    shape = RoundedCornerShape(10.dp),
+                    color = DarkCharcoal
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "${fps.roundToInt()}",
-                            color = NeonCyan,
-                            fontSize = 44.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            text = "FPS (MEASURED RENDER RATE)",
-                            color = ElectricBlue,
+                            text = "To run this game with your ${profile?.model ?: "ASUS ROG Phone 8"} 144 FPS Profile, please install the real game onto your phone first:",
+                            color = TextWhite,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
+                            lineHeight = 16.sp
                         )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "Anti-Cheat: ${game.antiCheatEngine}", color = TextMuted, fontSize = 10.sp)
-                            Text(text = "Play Integrity: Passed", color = NeonGreen, fontSize = 10.sp)
-                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    onClick = {
+                        onDismiss()
+                        onInstallFromPlayStore()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonGreen),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(text = "RETURN TO V-DESKTOP", color = VoidBlack, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                    Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = "INSTALL FROM GOOGLE PLAY", color = VoidBlack, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        onPickApk()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonCyan),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "INSTALL FROM APK FILE", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

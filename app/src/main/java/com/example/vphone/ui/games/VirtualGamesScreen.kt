@@ -23,6 +23,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -38,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,12 +83,15 @@ fun VirtualGamesScreen(
     val context = LocalContext.current
     val allGames by viewModel.allGames.collectAsStateWithLifecycle()
     val allProfiles by viewModel.allProfiles.collectAsStateWithLifecycle()
-    val runningPhone by viewModel.runningPhone.collectAsStateWithLifecycle()
-    val allPhones by viewModel.allPhones.collectAsStateWithLifecycle()
+    val installedPackages by viewModel.installedPackages.collectAsStateWithLifecycle()
     val selectedGame by viewModel.selectedGameForDetail.collectAsStateWithLifecycle()
 
     var showDetailDialog by remember { mutableStateOf(false) }
     var activeDetailGame by remember { mutableStateOf<VirtualGame?>(null) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshInstalledPackages(context)
+    }
 
     // Check if dialog was requested from dashboard
     if (selectedGame != null && !showDetailDialog) {
@@ -98,31 +104,37 @@ fun VirtualGamesScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            viewModel.showToast("APK selected: ${uri.lastPathSegment}. Parsing metadata and registering into Virtual Sandbox...")
+            viewModel.installApk(context, uri)
         }
     }
 
     if (showDetailDialog && activeDetailGame != null) {
         val game = activeDetailGame!!
         val report = viewModel.getCompatibilityReport(game)
+        val isInstalled = installedPackages.contains(game.packageName)
+
         GameDetailDialog(
             game = game,
             report = report,
+            isInstalled = isInstalled,
             availableProfiles = allProfiles,
             onDismiss = { showDetailDialog = false },
             onSaveConfig = { fps, profileId ->
                 viewModel.updateGameFps(game.packageName, fps)
                 viewModel.updateGameProfile(game.packageName, profileId)
             },
-            onLaunchGame = {
+            onLaunchRealGame = {
                 showDetailDialog = false
-                val targetPhone = runningPhone ?: allPhones.firstOrNull()
-                if (targetPhone != null) {
-                    viewModel.launchVirtualDesktop(targetPhone)
-                }
+                viewModel.launchRealGame(context, game)
+            },
+            onOpenPlayStore = {
+                showDetailDialog = false
+                viewModel.openPlayStore(context, game.packageName)
             }
         )
     }
+
+    val installedCount = allGames.count { installedPackages.contains(it.packageName) }
 
     LazyColumn(
         modifier = modifier
@@ -147,20 +159,20 @@ fun VirtualGamesScreen(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Individual Game Profiles & 144 FPS Engine Config",
+                        text = "Real Game Launcher with 144 FPS Identity Profiles",
                         color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
 
                 GamingBadge(
-                    text = "${allGames.size} GAMES",
-                    color = NeonGreen
+                    text = "$installedCount INSTALLED",
+                    color = if (installedCount > 0) NeonGreen else WarningAmber
                 )
             }
         }
 
-        // Actions: Scan Installed Games & Import APK
+        // Actions: Scan Real Games on Phone & Import APK
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -168,14 +180,13 @@ fun VirtualGamesScreen(
             ) {
                 Button(
                     onClick = { viewModel.scanDeviceGames(context) },
-                    colors = ButtonDefaults.buttonColors(containerColor = CardSurfaceVariant),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.weight(1f).testTag("scan_device_games_button")
                 ) {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "SCAN DEVICE", color = TextWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "SCAN PHONE GAMES", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
@@ -185,27 +196,30 @@ fun VirtualGamesScreen(
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.weight(1f).testTag("import_apk_button")
                 ) {
-                    Icon(imageVector = Icons.Default.FileDownload, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                    Icon(imageVector = Icons.Default.FileDownload, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = "IMPORT APK", color = TextWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "INSTALL APK", color = TextWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
         items(allGames) { game ->
             val profile = allProfiles.firstOrNull { it.id == game.assignedProfileId }
+            val isInstalled = installedPackages.contains(game.packageName)
+
             VirtualGameItemCard(
                 game = game,
                 profileModel = profile?.model ?: "Infinix X6891",
+                isInstalled = isInstalled,
                 onConfigure = {
                     activeDetailGame = game
                     showDetailDialog = true
                 },
-                onLaunch = {
-                    val targetPhone = runningPhone ?: allPhones.firstOrNull()
-                    if (targetPhone != null) {
-                        viewModel.launchVirtualDesktop(targetPhone)
-                    }
+                onLaunchRealGame = {
+                    viewModel.launchRealGame(context, game)
+                },
+                onOpenPlayStore = {
+                    viewModel.openPlayStore(context, game.packageName)
                 }
             )
         }
@@ -220,10 +234,13 @@ fun VirtualGamesScreen(
 fun VirtualGameItemCard(
     game: VirtualGame,
     profileModel: String,
+    isInstalled: Boolean,
     onConfigure: () -> Unit,
-    onLaunch: () -> Unit
+    onLaunchRealGame: () -> Unit,
+    onOpenPlayStore: () -> Unit
 ) {
     GamingCard(
+        borderColor = if (isInstalled) CardBorderGlow else CardBorder,
         modifier = Modifier.fillMaxWidth().testTag("game_item_card_${game.packageName}")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -268,10 +285,19 @@ fun VirtualGameItemCard(
                     }
                 }
 
-                GamingBadge(
-                    text = "${game.preferredFps} FPS",
-                    color = if (game.preferredFps >= 120) NeonGreen else NeonCyan
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    GamingBadge(
+                        text = if (isInstalled) "INSTALLED" else "NOT INSTALLED",
+                        color = if (isInstalled) NeonGreen else WarningAmber
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${game.preferredFps} FPS Profile",
+                        color = NeonCyan,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -290,7 +316,7 @@ fun VirtualGameItemCard(
                     Icon(imageVector = Icons.Default.Smartphone, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Profile: $profileModel",
+                        text = "Active Profile: $profileModel",
                         color = TextWhite,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
@@ -310,20 +336,34 @@ fun VirtualGameItemCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Actions Row
+            // Real Launch & Actions Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
-                    onClick = onLaunch,
-                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "LAUNCH IN V-PHONE", color = VoidBlack, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                if (isInstalled) {
+                    Button(
+                        onClick = onLaunchRealGame,
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).testTag("launch_real_game_button_${game.packageName}")
+                    ) {
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = VoidBlack, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "LAUNCH REAL GAME (144 FPS)", color = VoidBlack, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    }
+                } else {
+                    Button(
+                        onClick = onOpenPlayStore,
+                        colors = ButtonDefaults.buttonColors(containerColor = CardSurfaceVariant),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonGreen.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).testTag("install_playstore_button_${game.packageName}")
+                    ) {
+                        Icon(imageVector = Icons.Default.Download, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "INSTALL FROM PLAY STORE", color = NeonGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 OutlinedButton(
